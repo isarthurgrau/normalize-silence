@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Normalize Silence Activity</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Phosphor Icons for Mute/Unmute -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FFFFFF; 
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Loading Overlay */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #FFFFFF;
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            transition: opacity 0.5s ease;
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border-left-color: #4473a1;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+
+      
+        /* FLIP CARD CSS */
+        .flip-card {
+            background-color: transparent;
+            perspective: 800px; 
+            cursor: pointer;
+        }
+
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        /* Flip on hover - RE-ENABLED */
+        .flip-card:hover .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        
+        .flip-card-front, .flip-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 13px; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            padding: 2rem; 
+        }
+
+        .flip-card-front {
+            background-color: #4473a1; 
+            color: #FFFFFF; 
+        }
+
+        .flip-card-back {
+            background-color: #FFFFFF; 
+            color: #1f2937;
+            transform: rotateY(180deg);
+            overflow-y: auto; 
+        }
+
+        /* Timer Styles */
+        .timer-container {
+            display: none; /* Hidden by default */
+            width: 100%;
+            height: 100%;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        .timer-svg {
+            transform: rotate(-90deg); /* Start at 12:00 */
+        }
+
+        .timer-circle-bg {
+            fill: none;
+            stroke: #e5e7eb; /* Light gray track */
+            stroke-width: 8;
+        }
+
+        .timer-circle-progress {
+            fill: none;
+            stroke: #716F6D; /* Requested Color */
+            stroke-width: 8;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s linear;
+        }
+
+        /* Starburst Styles */
+        .completion-starburst {
+            display: none; /* Hidden until done */
+            width: 190px; 
+            height: 190px; 
+            animation: pulse 2s infinite ease-in-out;
+            margin-bottom: 1rem;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+
+        /* Reset Button Style */
+        .reset-btn {
+            display: none; /* Hidden until timer finishes */
+            background-color: #9CA3AF; /* Medium Gray (Tailwind gray-400) */
+            color: white;
+            font-weight: bold;
+            padding: 0.5rem 1.5rem;
+            border-radius: 9px;
+            transition: background-color 0.2s;
+        }
+        .reset-btn:hover {
+            background-color: #6B7280; 
+        }
+
+        /* Custom Simple Volume Toggle */
+        .volume-toggle-container {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .volume-track {
+            width: 50px;
+            height: 26px;
+            background-color: #d1d5db; /* Gray-300 for OFF state */
+            border-radius: 9999px;
+            position: relative;
+            transition: background-color 0.3s ease;
+        }
+
+        .volume-knob {
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        /* Active State for Toggle */
+        .volume-toggle-container.active .volume-track {
+            background-color: #4473a1;
+        }
+
+        .volume-toggle-container.active .volume-knob {
+            transform: translateX(24px); /* Move knob to right */
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <p class="text-gray-600 font-medium">Loading assets...</p>
+    </div>
+
+    <!-- Audio Elements (Source set dynamically) -->
+    <audio id="audio-1min" preload="auto"></audio>
+    <audio id="audio-2min" preload="auto"></audio>
+    <audio id="audio-3min" preload="auto"></audio>
+
+
+    <!-- Main Content Area -->
+    <div class="w-full flex justify-center items-start pt-12 px-4">
+        <div class="w-full bg-white shadow-2xl max-w-6xl rounded-xl overflow-hidden min-h-[500px] p-8 md:p-12">
+            
+            <!-- INTRODUCTORY PROMPT & SOUND TOGGLE ROW -->
+            <div class="mb-12 max-w-7xl flex flex-col md:flex-row gap-8 items-start">
+                
+                <!-- Left: Text Content -->
+                <div class="flex-grow text-gray-600 text-base leading-relaxed space-y-4 max-w-4xl">
+                    <p><strong>
+                        Invite quiet reflection into your habits. Remove any discomfort of silence together in groups. Start with a minute on you next meeting and go from there.
+                    </strong></p>
+                    <p>
+                        Silence is often heard as a gap to be filled. Quiet may be perceived as awkward in a work environment. However, research on decision-making indicates that structured intentional silence can be a powerful tool for individuals and groups. A bit of shared quiet reflection can set the stage for emerging voices to chime in and it may create space for creativity to arise.
+                    </p> 
+                </div>
+
+                <!-- Right: Sound Toggle -->
+                <div class="flex flex-col items-center justify-start pt-2 flex-shrink-0 md:ml-auto">
+                    <span class="text-gray-500 mb-2 text-sm">Sound</span>
+                    <div class="volume-toggle-container active" id="volumeToggle" onclick="toggleSound()" title="Toggle Sound">
+                        <div class="volume-track">
+                            <div class="volume-knob"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- CARD GRID -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                
+                <!-- CARD ONE (1 Min = 60s) -->
+                <div class="flip-card aspect-square w-full">
+                    <div class="flip-card-inner">
+                        <div class="flip-card-front">
+                            <h1 class="text-5xl font-bold text-white-700">1 Min</h1>
+                        </div>
+                        <div class="flip-card-back">
+                            <!-- Text Content -->
+                            <div class="text-content text-left w-full h-full flex flex-col text-gray-800">
+                                <p class="mb-4 font-bold text-sm leading-tight">In a minute of quiet you may:</p>
+                                <ol class="list-decimal pl-4 text-sm space-y-2 leading-snug">
+                                    <li>Soften your gaze or close your eyes.</li>
+                                    <li>Notice your feet are on the ground, your seat in the chair.</li>
+                                    <li>Notice the dignity of your spine, adjust for comfort.</li>
+                                </ol>
+                                <button onclick="startTimer(event, this, 60)" class="mt-auto self-center bg-[#4473a1] text-white font-bold py-2 px-6 rounded-[9px] hover:bg-green-700 transition-colors">Start</button>
+                            </div>
+                            <!-- Timer Content -->
+                            <div class="timer-container">
+                                <!-- Spacer div to push content to center vertically, then button to bottom -->
+                                <div class="flex-grow flex flex-col justify-center items-center w-full">
+                                    <svg class="timer-svg" width="120" height="120" viewBox="0 0 120 120">
+                                        <circle class="timer-circle-bg" cx="60" cy="60" r="54"></circle>
+                                        <circle class="timer-circle-progress" cx="60" cy="60" r="54" pathLength="1"></circle>
+                                    </svg>
+                                    <!-- Starburst SVG -->
+                                    <svg class="completion-starburst" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="100" cy="100" r="30" fill="none" stroke="#4473a1" stroke-width="8" />
+                                        <g stroke="#4473a1" stroke-width="4" stroke-linecap="round">
+                                            <line x1="100" y1="30" x2="100" y2="2" />   
+                                            <line x1="100" y1="170" x2="100" y2="198" />   
+                                            <line x1="30" y1="100" x2="2" y2="100" />    
+                                            <line x1="170" y1="100" x2="198" y2="100" />   
+                                            <line x1="100" y1="30" x2="100" y2="2" transform="rotate(45, 100, 100)" />
+                                            <line x1="100" y1="170" x2="100" y2="198" transform="rotate(45, 100, 100)" />
+                                            <line x1="30" y1="100" x2="2" y2="100" transform="rotate(45, 100, 100)" />
+                                            <line x1="170" y1="100" x2="198" y2="100" transform="rotate(45, 100, 100)" />
+                                        </g>
+                                    </svg>
+                                </div>
+                                <button onclick="resetCard(event, this)" class="reset-btn mt-auto">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CARD TWO (2 Min = 120s) -->
+                <div class="flip-card aspect-square w-full">
+                    <div class="flip-card-inner">
+                        <div class="flip-card-front">
+                            <h1 class="text-5xl font-bold text-white-700">2 Min</h1>
+                        </div>
+                        <div class="flip-card-back">
+                             <!-- Text Content -->
+                            <div class="text-content text-left w-full h-full flex flex-col text-gray-800">
+                                <p class="mb-4 font-bold text-sm leading-tight">In two minutes of quiet you may:</p>
+                                <ol class="list-decimal pl-4 text-sm space-y-2 leading-snug">
+                                    <li>Notice the sounds in the room.</li>
+                                    <li>Consider your breathing. Take a deep breath or few.</li>
+                                    <li>Notice the position, placement, and shape of your hands.</li>
+                                </ol>
+                                <button onclick="startTimer(event, this, 120)" class="mt-auto self-center bg-[#4473a1] text-white font-bold py-2 px-6 rounded-[9px] hover:bg-green-700 transition-colors">Start</button>
+                            </div>
+                            <!-- Timer Content -->
+                            <div class="timer-container">
+                                <div class="flex-grow flex flex-col justify-center items-center w-full">
+                                    <svg class="timer-svg" width="120" height="120" viewBox="0 0 120 120">
+                                        <circle class="timer-circle-bg" cx="60" cy="60" r="54"></circle>
+                                        <circle class="timer-circle-progress" cx="60" cy="60" r="54" pathLength="1"></circle>
+                                    </svg>
+                                    <!-- Starburst SVG -->
+                                    <svg class="completion-starburst" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="100" cy="100" r="30" fill="none" stroke="#4473a1" stroke-width="8" />
+                                        <g stroke="#4473a1" stroke-width="4" stroke-linecap="round">
+                                            <line x1="100" y1="30" x2="100" y2="2" />   
+                                            <line x1="100" y1="170" x2="100" y2="198" />   
+                                            <line x1="30" y1="100" x2="2" y2="100" />    
+                                            <line x1="170" y1="100" x2="198" y2="100" />   
+                                            <line x1="100" y1="30" x2="100" y2="2" transform="rotate(45, 100, 100)" />
+                                            <line x1="100" y1="170" x2="100" y2="198" transform="rotate(45, 100, 100)" />
+                                            <line x1="30" y1="100" x2="2" y2="100" transform="rotate(45, 100, 100)" />
+                                            <line x1="170" y1="100" x2="198" y2="100" transform="rotate(45, 100, 100)" />
+                                        </g>
+                                    </svg>
+                                </div>
+                                <button onclick="resetCard(event, this)" class="reset-btn mt-auto">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CARD THREE (3 Min = 180s) -->
+                <div class="flip-card aspect-square w-full">
+                    <div class="flip-card-inner">
+                        <div class="flip-card-front">
+                            <h1 class="text-5xl font-bold text-white-700">3 Min</h1>
+                        </div>
+                        <div class="flip-card-back">
+                             <!-- Text Content -->
+                            <div class="text-content text-left w-full h-full flex flex-col text-gray-800">
+                                <p class="mb-4 font-bold text-sm leading-tight">In three minutes of quiet you may:</p>
+                                <ol class="list-decimal pl-4 text-sm space-y-2 leading-snug">
+                                    <li>Notice any sensations atop the head and slowly move your mind's eye down the body.</li>
+                                    <li>Observe any sensations, thoughts, or feelings that pop up.</li>
+                                </ol>
+                                <button onclick="startTimer(event, this, 180)" class="mt-auto self-center bg-[#4473a1] text-white font-bold py-2 px-6 rounded-[9px] hover:bg-green-700 transition-colors">Start</button>
+                            </div>
+                            <!-- Timer Content -->
+                            <div class="timer-container">
+                                <div class="flex-grow flex flex-col justify-center items-center w-full">
+                                    <svg class="timer-svg" width="120" height="120" viewBox="0 0 120 120">
+                                        <circle class="timer-circle-bg" cx="60" cy="60" r="54"></circle>
+                                        <circle class="timer-circle-progress" cx="60" cy="60" r="54" pathLength="1"></circle>
+                                    </svg>
+                                    <!-- Starburst SVG -->
+                                    <svg class="completion-starburst" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="100" cy="100" r="30" fill="none" stroke="#4473a1" stroke-width="8" />
+                                        <g stroke="#4473a1" stroke-width="4" stroke-linecap="round">
+                                            <line x1="100" y1="30" x2="100" y2="2" />   
+                                            <line x1="100" y1="170" x2="100" y2="198" />   
+                                            <line x1="30" y1="100" x2="2" y2="100" />    
+                                            <line x1="170" y1="100" x2="198" y2="100" />   
+                                            <line x1="100" y1="30" x2="100" y2="2" transform="rotate(45, 100, 100)" />
+                                            <line x1="100" y1="170" x2="100" y2="198" transform="rotate(45, 100, 100)" />
+                                            <line x1="30" y1="100" x2="2" y2="100" transform="rotate(45, 100, 100)" />
+                                            <line x1="170" y1="100" x2="198" y2="100" transform="rotate(45, 100, 100)" />
+                                        </g>
+                                    </svg>
+                                </div>
+                                <button onclick="resetCard(event, this)" class="reset-btn mt-auto">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Audio Logic & Mute State
+        let isMuted = false; // Default to sound ON, but button shows ON state visually
+        let currentAudio = null;
+
+        // Simple local asset setup for standalone use
+            window.onload = function() {
+    // Set audio sources directly from /assets
+    document.getElementById('audio-1min').src = 'assets/1-minute.mp3';
+    document.getElementById('audio-2min').src = 'assets/2-minute.mp3';
+    document.getElementById('audio-3min').src = 'assets/3-minute.mp3';
+
+    // Hide loading overlay
+    const loader = document.getElementById('loadingOverlay');
+    loader.style.opacity = '0';
+    setTimeout(() => { loader.style.display = 'none'; }, 500);
+};
+
+        // Toggle Sound Function
+            function toggleSound() {
+            const toggleContainer = document.getElementById('volumeToggle');
+            isMuted = !isMuted; // Flip state
+
+            if (isMuted) {
+                // If now muted (OFF)
+                toggleContainer.classList.remove('active');
+                if (currentAudio) currentAudio.muted = true;
+            } else {
+                // If now unmuted (ON)
+                toggleContainer.classList.add('active');
+                if (currentAudio) currentAudio.muted = false;
+            }
+        }
+
+        // Timer Start Logic
+        function startTimer(event, button, durationSeconds) {
+            event.stopPropagation(); // Stop the card from flipping back
+
+            // Find parent elements
+            const cardBack = button.closest('.flip-card-back');
+            const textContent = cardBack.querySelector('.text-content');
+            const timerContainer = cardBack.querySelector('.timer-container');
+            const progressCircle = timerContainer.querySelector('.timer-circle-progress');
+            const starburst = timerContainer.querySelector('.completion-starburst');
+            const svg = timerContainer.querySelector('.timer-svg');
+            const resetBtn = timerContainer.querySelector('.reset-btn');
+
+            // Swap views
+            textContent.style.display = 'none';
+            timerContainer.style.display = 'flex';
+            
+            // Reset state
+            progressCircle.style.display = 'block';
+            svg.style.display = 'block';
+            starburst.style.display = 'none';
+            resetBtn.style.display = 'none';
+            
+            // Handle Audio
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            }
+            
+            // Select track based on duration
+            if (durationSeconds === 60) currentAudio = document.getElementById('audio-1min');
+            else if (durationSeconds === 120) currentAudio = document.getElementById('audio-2min');
+            else if (durationSeconds === 180) currentAudio = document.getElementById('audio-3min');
+
+            if (currentAudio) {
+                currentAudio.muted = isMuted;
+                // Basic error handling for audio autoplay policies
+                const playPromise = currentAudio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log("Audio playback failed:", error);
+                        // Optional: Show UI hint if autoplay is blocked
+                    });
+                }
+            }
+
+            // Force reflow
+            progressCircle.getBoundingClientRect();
+
+            // Set animation
+            progressCircle.style.strokeDasharray = '1';
+            progressCircle.style.strokeDashoffset = '0';
+            
+            setTimeout(() => {
+                progressCircle.style.transition = `stroke-dashoffset ${durationSeconds}s linear`;
+                progressCircle.style.strokeDashoffset = '1'; 
+            }, 50);
+
+            setTimeout(() => {
+                svg.style.display = 'none';
+                starburst.style.display = 'block';
+                resetBtn.style.display = 'block'; // Show reset button when timer ends
+                
+                // Note: Audio fades naturally in the file, so no code needed to stop it here
+            }, durationSeconds * 1000);
+        }
+
+        // Card Reset Logic
+        function resetCard(event, button) {
+            event.stopPropagation(); // Stop flip
+
+            // Stop any playing audio
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            }
+
+            const timerContainer = button.closest('.timer-container');
+            const cardBack = timerContainer.closest('.flip-card-back');
+            const textContent = cardBack.querySelector('.text-content');
+            const progressCircle = timerContainer.querySelector('.timer-circle-progress');
+
+            // Remove transition temporarily to reset without animation
+            progressCircle.style.transition = 'none';
+            progressCircle.style.strokeDashoffset = '0';
+
+            // Swap views back
+            timerContainer.style.display = 'none';
+            textContent.style.display = 'flex';
+        }
+    </script>
+
+</body>
+</html>
